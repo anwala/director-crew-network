@@ -1,0 +1,89 @@
+#!python
+import argparse
+import logging
+import sys
+
+from dcnet.backbone import gen_movie_crew_net
+from dcnet.backbone import print_stats
+from dcnet.backbone import write_director_movie_credits
+
+from dcnet.util import setLogDefaults
+from dcnet.util import setLoggerDets
+
+logger = logging.getLogger('dcnet.dcnet')
+
+def get_generic_args():
+
+    parser = argparse.ArgumentParser(formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=30), description='Director-crew network command-line tool')
+    subparsers = parser.add_subparsers()
+
+    data_parser = subparsers.add_parser('data', help='Director-Crew Network data extraction task')
+    data_parser.add_argument('-d', '--director-id', nargs='+', required=True, help='IMDb ID of the director to extract movie credits information. E.g., "nm0027572" for Wes Anderson (https://www.imdb.com/name/nm0027572/)')
+    data_parser.add_argument('--max-movies', type=int, help='Maximum number of movies to extract crew information from. -1 means no limit')
+    data_parser.set_defaults(task='data')
+
+    net_parser = subparsers.add_parser('net', help='Director-Crew Network network generation task')
+    net_parser.add_argument('--self-loops', action='store_true', help='Do not include self loops. Director serving in a different role (e.g., writer) on the movie they directed.')
+    net_parser.set_defaults(task='net')
+
+    vis_parser = subparsers.add_parser('vis', help='Director-Crew Network visualization generation task')
+    vis_parser.set_defaults(task='vis')
+
+    ana_parser = subparsers.add_parser('ana', help='Director-Crew Network visualization generation task')
+    ana_parser.add_argument('--stats', action='store_true', help='Print director-crew network dataset stats.')
+    ana_parser.set_defaults(task='ana')
+
+    #groups
+    parser.add_argument('--log-file', default='', help='Log output filename')
+    parser.add_argument('--log-format', default='', help='Log print format, see: https://docs.python.org/3/howto/logging-cookbook.html')
+    parser.add_argument('--log-level', default='info', choices=['critical', 'error', 'warning', 'info', 'debug', 'notset'], help='Log level')
+
+    #alphabetical
+    parser.add_argument('--cache-read', action='store_true', help='Attempt to input from cache.')
+    parser.add_argument('--director-metadata-file', default='', help='Optional CSV file containing metadata of specific movie directors.')
+    parser.add_argument('-e', '--exclude-movie-types', default=[], nargs='+', choices=['Movie', 'MusicVideoObject', 'TVSeries', 'VideoGame', '', 'feature_films', 'non_feature_films'], help='Categories of films to exclude')
+    parser.add_argument('--exclude-movie-roles', default=[], nargs='+', help='Roles of movies to skip. See backbone.py.normalize_movie_role() for list of roles.')
+    parser.add_argument('--repo', default='', help='Repository to read/write director crew files')
+
+    return parser
+
+def proc_req(args):
+
+    params = vars(args)
+
+    setLogDefaults( params )
+    setLoggerDets( logger, params['log_dets'] )
+    logger.info( '\ntask: {}'.format(params['task']) )
+
+    if( params['task'] == 'data' ):
+        write_director_movie_credits(**params)
+    elif( params['task'] == 'ana' ):
+        print_stats(**params)
+    elif( params['task'] == 'net' ):
+        gen_movie_crew_net(**params)
+
+def main():
+
+    if( len(sys.argv) > 1 ):
+        
+        if( sys.argv[1] == '-v' or sys.argv[1] == '--version' ):
+            from dcnet.version import __appversion__
+            print(__appversion__)
+            return
+
+    parser = get_generic_args()
+    args = parser.parse_args()
+
+    args.repo = args.repo.strip()
+    args.repo = args.repo if args.repo is None or args.repo == '' or args.repo.endswith('/') else f'{args.repo}/'
+
+    proc_req(args)
+    '''
+        * time dcnet --cache-read --repo ./film-directors --director-metadata-file=~/Downloads/100_film_directors.csv data --max-movies -1 --director-id nm0027572 nm0000108
+        * time dcnet --cache-read --repo ./film-directors --director-metadata-file=~/Downloads/100_film_directors.csv data --max-movies -1 --director-id nm0009190 nm0000095 nm0000759 nm0027572 nm0000777 nm0036349 nm0004716 nm0037708 nm0000876 nm0000881 nm0000941 nm0122344 nm0000318 nm0000116 nm0001005 nm0138927 nm0160840 nm0001054 nm0001060 nm3363032 nm0000338 nm0001068 nm0000343 nm0001081 nm0190859 nm0200005 nm0000361 nm0868219 nm1148550 nm0000142 nm0000386 nm0269463 nm0000399 nm0281945 nm1560977 nm0298807 nm1950086 nm0336620 nm0336695 nm0362566 nm1802161 nm0366004 nm0001331 nm0002132 nm1716636 nm0392237 nm0000165 nm0327944 nm0001392 nm0000464 nm1503575 nm0420941 nm0426059 nm0005069 nm0476201 nm1883257 nm0000490 nm0000487 nm0501435 nm0000500 nm0510912 nm0000186 nm0000517 nm0000520 nm0570912 nm0583600 nm0590122 nm0619762 nm0634240 nm0668247 nm1443502 nm1347153 nm0001631 nm0697656 nm0000600 nm2011696 nm0716980 nm0751102 nm0751577 nm0000217 nm0000631 nm1119645 nm0796117 nm0001741 nm0001752 nm0000229 nm0000231 nm0000233 nm0853380 nm0001814 nm0893659 nm0898288 nm0905154 nm0905152 nm0169806 nm1490123 nm0911061 nm1218281 nm0946734 nm0000709 nm2125482
+        * time dcnet --director-metadata-file 100_film_directors.csv --exclude-movie-types non_feature_films --exclude-movie-roles "Additional Crew" "Animation Department" "Art Department" "Art Direction by" "Camera and Electrical Department" Cast "Casting By" "Casting Department" "Costume and Wardrobe Department" "Editorial Department" "Location Management" "Music Department" "Produced by" "Production Department" "Production Management" "Script and Continuity Department" "Second Unit Director or Assistant Director" "Set Decoration by" Stunts Thanks "Transportation Department" "Visual Effects by" --repo ./film-directors ana
+        * time dcnet --director-metadata-file 100_film_directors.csv --exclude-movie-types non_feature_films --exclude-movie-roles "Additional Crew" "Animation Department" "Art Department" "Art Direction by" "Camera and Electrical Department" Cast "Casting By" "Casting Department" "Costume and Wardrobe Department" "Editorial Department" "Location Management" "Music Department" "Produced by" "Production Department" "Production Management" "Script and Continuity Department" "Second Unit Director or Assistant Director" "Set Decoration by" Stunts Thanks "Transportation Department" "Visual Effects by" --repo ./film-directors net
+    '''
+    
+if __name__ == '__main__':
+    main()
